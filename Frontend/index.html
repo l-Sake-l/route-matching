@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Route Matching</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  </head>
+  <body>
+    <div id="form-container">
+      <h1>Check Route Match</h1>
+      <form id="route-form">
+        <input
+          type="text"
+          id="origin1"
+          name="origin1"
+          placeholder="Car guy origin (lat,lng)"
+          required
+        />
+        <input
+          type="text"
+          id="destination1"
+          name="destination1"
+          placeholder="Car guy destination (lat,lng)"
+          required
+        />
+        <input
+          type="text"
+          id="origin2"
+          name="origin2"
+          placeholder="Carpooler origin (lat,lng)"
+          required
+        />
+        <input
+          type="text"
+          id="destination2"
+          name="destination2"
+          placeholder="Carpooler destination (lat,lng)"
+          required
+        />
+        <button type="submit">Check Route Match</button>
+      </form>
+      <div id="result"></div>
+      <div id="resultfinal"></div>
+    </div>
+    <div id="map-container">
+      <div id="map" style="height: 600px;"></div>
+    </div>
+
+    <script>
+      const form = document.getElementById("route-form");
+      const resultContainer = document.getElementById("result");
+      const finalresultContainer = document.getElementById("resultfinal");
+      const mapContainer = document.getElementById("map");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const origin1 = document.getElementById("origin1").value;
+        const destination1 = document.getElementById("destination1").value;
+        const origin2 = document.getElementById("origin2").value;
+        const destination2 = document.getElementById("destination2").value;
+
+        // Swap latitude and longitude
+        const formatCoords = (coords) => {
+          return coords.split(',').reverse().join(', ');
+        };
+
+        const data = {
+          origin1: formatCoords(origin1),
+          destination1: formatCoords(destination1),
+          origin2: formatCoords(origin2),
+          destination2: formatCoords(destination2),
+        };
+
+        try {
+          const response = await axios.post(
+            "http://localhost:3000/match-routes",
+            data
+          );
+          const { matchPercentage, route1, route2, points1, points2, IsSuitable } =
+            response.data;
+
+          resultContainer.innerHTML = `<p>Match Percentage: ${matchPercentage.toFixed(
+            2
+          )}%</p>`;
+          if (IsSuitable === true){
+              finalresultContainer.innerHTML = `<p> The Routes match Significantly! It's a Carpool! </p>`
+              
+            } else{
+              finalresultContainer.innerHTML = `<p> The Routes DID NOT match Significantly! It's NOT a Carpool! </p>`
+
+          } 
+
+          // Initialize map
+          const map = L.map(mapContainer).setView(
+            [route1[0][1], route1[0][0]],
+            13
+          );
+
+          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+          }).addTo(map);
+
+          // Plot both routes
+          const polyline1 = L.polyline(
+            route1.map((coord) => [coord[1], coord[0]]),
+            { color: "blue" }
+          ).addTo(map);
+          const polyline2 = L.polyline(
+            route2.map((coord) => [coord[1], coord[0]]),
+            { color: "green" }
+          ).addTo(map);
+
+          // Plot all points from route1 and route2
+          points1.forEach((point) => {
+            L.circle([point[1], point[0]], {
+              radius: 5,
+              color: "blue",
+              fillColor: "#0000FF",
+              fillOpacity: 0.5
+            }).addTo(map);
+          });
+
+          points2.forEach((point) => {
+            L.circle([point[1], point[0]], {
+              radius: 5,
+              color: "green",
+              fillColor: "#00FF00",
+              fillOpacity: 0.5
+            }).addTo(map);
+          });
+
+          // Plot matching points
+          points2.forEach((point2) => {
+            const isMatching = points1.some(
+              (point1) => haversineDistance(point1, point2) <= 15
+            );
+            if (isMatching) {
+              L.circle([point2[1], point2[0]], {
+                radius: 5,
+                color: "red",
+                fillColor: "#FF0000",
+                fillOpacity: 0.5
+              }).addTo(map);
+            }
+          });
+
+          // Fit map bounds to both routes
+          map.fitBounds(polyline1.getBounds().extend(polyline2.getBounds()));
+        } catch (error) {
+          console.error(error);
+          resultContainer.innerHTML = `<p>Error: ${error.message}</p>`;
+        }
+      });
+
+      function haversineDistance(coord1, coord2) {
+        const R = 6371000; // Earth radius in meters
+        const lat1 = (coord1[1] * Math.PI) / 180;
+        const lat2 = (coord2[1] * Math.PI) / 180;
+        const dLat = ((coord2[1] - coord1[1]) * Math.PI) / 180;
+        const dLon = ((coord2[0] - coord1[0]) * Math.PI) / 180;
+
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat1) *
+            Math.cos(lat2) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c;
+      }
+    </script>
+  </body>
+</html>
